@@ -17,6 +17,7 @@ type Config struct {
 	Database       DatabaseConfig        `koanf:"database" validate:"required"`
 	Auth           AuthConfig            `koanf:"auth" validate:"required"`
 	Observeability *ObserveabilityConfig `koanf:"observeability"`
+	Integration    IntegrationConfig     `koanf:"integration" validate:"required"`
 }
 
 type Primary struct {
@@ -49,11 +50,15 @@ type RedisConfig struct {
 	Address string `koanf:"address" validate:"required"`
 }
 
+type IntegrationConfig struct {
+	ResendAPIKey string `koanf:"resend_api_key" validate:"required"`
+}
+
 type AuthConfig struct {
 	SecretKey string `koanf:"secret_key" validate:"required"`
 }
 
-func LoadConfig() (*config, error) {
+func LoadConfig() (*Config, error) {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
 	k := koanf.New(".")
 
@@ -64,7 +69,7 @@ func LoadConfig() (*config, error) {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Could not load initial env variables")
 	}
-	mainConfig := &config{}
+	mainConfig := &Config{}
 
 	err = k.Unmarshal("", mainConfig)
 	if err != nil {

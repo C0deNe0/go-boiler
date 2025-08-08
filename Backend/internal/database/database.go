@@ -6,12 +6,16 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/C0deNe0/go-boiler/internal/config"
 	loggerConfig "github.com/C0deNe0/go-boiler/internal/logger"
+	pgxzero "github.com/jackc/pgx-zerolog"
+	"github.com/newrelic/go-agent/v3/integrations/nrpgx5"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/tracelog"
 	"github.com/rs/zerolog"
 )
 
@@ -70,4 +74,57 @@ func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerConfig
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse pgx pool config : %w", err)
 	}
+
+	//Add if has newrelic postgres instrumental
+	if loggerService != nil && loggerService.GetApplication() != nil {
+		pgxPoolConfig.ConnConfig.Tracer = nrpgx5.NewTracer()
+	}
+
+	if cfg.Primary.Env == "local" {
+		globalLever := logger.GetLevel()
+		pgxLogger := loggerConfig.NewPgxLogger(globalLever)
+
+		if pgxPoolConfig.ConnConfig.Tracer != nil {
+			//if new relic tracer exist, create a multi-tracer
+
+			localTracer := &tracelog.TraceLog{
+				Logger:   pgxzero.NewLogger(pgxLogger),
+				LogLevel: tracelog.LogLevel(loggerConfig.GetPgxTraceLogLevel(globalLever)),
+			}
+			pgxPoolConfig.ConnConfig.Tracer = &multiTracer{
+				traces: []any{pgxPoolConfig.ConnConfig.Tracer, localTracer},
+			}
+		} else {
+			pgxPoolConfig.ConnConfig.Tracer = &tracelog.TraceLog{
+				Logger:   pgxzero.NewLogger(pgxLogger),
+				LogLevel: tracelog.LogLevel(loggerConfig.GetPgxTraceLogLevel(globalLever)),
+			}
+		}
+
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), pgxPoolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pgx pool:%w", err)
+	}
+
+	database := &Database{
+		Pool: pool,
+		log:  logger,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), DatabasePingTimeout*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	logger.Info().Msg("Connected to database ")
+	return database, nil
+}
+
+func (db *Database) Close() error {
+	db.log.Info().Msg("closing database connection")
+	db.Pool.Close()
+	return nil
 }
