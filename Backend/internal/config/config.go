@@ -16,8 +16,9 @@ type Config struct {
 	Server         ServerConfig          `koanf:"server" validate:"required"`
 	Database       DatabaseConfig        `koanf:"database" validate:"required"`
 	Auth           AuthConfig            `koanf:"auth" validate:"required"`
-	Observeability *ObserveabilityConfig `koanf:"observeability"`
+	Redis          RedisConfig           `koanf:"redis" validate:"required"`
 	Integration    IntegrationConfig     `koanf:"integration" validate:"required"`
+	Observeability *ObserveabilityConfig `koanf:"observeability"`
 }
 
 type Primary struct {
